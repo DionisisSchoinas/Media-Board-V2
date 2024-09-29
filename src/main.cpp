@@ -10,6 +10,11 @@
 #define JOYSTICK_Y A1
 #define JOYSTICK_SW 15
 
+#define VOLUME_SCALE_DEADZONE_MIN 23
+#define VOLUME_SCALE_DEADZONE_MAX 1000
+#define VOLUME_SCALE_OUTPUT_MIN 0
+#define VOLUME_SCALE_OUTPUT_MAX 50
+
 void detectJoystickMovement();
 int getMappedJoystickValue(int pinValue);
 int getMappedJoystickValueWithDelay(int index);
@@ -119,7 +124,7 @@ int getMappedJoystickValueWithDelay(int index) {
 }
 
 void adjustVolume() {
-  int volume = scale(analogRead(VOLUME_INPUT));
+  int volume = 50 - scale(analogRead(VOLUME_INPUT));
   if (lastVolume < volume) {
     Consumer.press(MEDIA_VOLUME_UP);
     Consumer.release(MEDIA_VOLUME_UP);
@@ -142,8 +147,18 @@ void setVolumeToZero() {
   }
 }
 
+/*
+  y = y0 + (y1 - y0) * (x - x0) / (x1 - x0)
+  x E 23-1000
+  y E 0-50
+*/
 int scale(int value) {
-  return 50 - value * 50L / 1023;
+  if (value < VOLUME_SCALE_DEADZONE_MIN) {
+    return VOLUME_SCALE_OUTPUT_MIN;
+  } else if (value > VOLUME_SCALE_DEADZONE_MAX) {
+    return VOLUME_SCALE_OUTPUT_MAX;
+  }
+  return (long)VOLUME_SCALE_OUTPUT_MAX * (value-VOLUME_SCALE_DEADZONE_MIN) / (VOLUME_SCALE_DEADZONE_MAX-VOLUME_SCALE_DEADZONE_MIN);
 }
 
 /*

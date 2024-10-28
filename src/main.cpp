@@ -4,12 +4,15 @@
 #include "AdvancedAnalogPin.h"
 #include "HID-Project.h"
 
+#define SERIAL_PRINT 0
+
 #define VOLUME_INPUT A3
 
 #define JOYSTICK_X A0
 #define JOYSTICK_Y A1
 #define JOYSTICK_SW 15
 
+#define VOLUME_ANALOG_READ_DEADZONE 2
 #define VOLUME_SCALE_DEADZONE_MIN 23
 #define VOLUME_SCALE_DEADZONE_MAX 1000
 #define VOLUME_SCALE_OUTPUT_MIN 0
@@ -20,7 +23,8 @@ int getMappedJoystickValue(int pinValue);
 int getMappedJoystickValueWithDelay(int index);
 void adjustVolume();
 void setVolumeToZero();
-int scale(int value);
+short scale(int value);
+void updatedAnalogRead(int value);
 bool isFirstPress(AdvancedDigitalPin &b);
 bool isHeld(AdvancedDigitalPin &b);
 
@@ -34,10 +38,14 @@ int joystickMappedValues[] = {0, 1, 5, 15};
 int repeatDelay = 250;
 unsigned long lastRepeat = 0;
 
-int lastVolume;
+short volume;
+short lastVolume;
+int lastAnalogRead;
 
 void setup() {
+  #ifndef SERIAL_PRINT
   Serial.begin(9600);
+  #endif
 
   Keyboard.begin();
   Mouse.begin();
@@ -124,7 +132,15 @@ int getMappedJoystickValueWithDelay(int index) {
 }
 
 void adjustVolume() {
-  int volume = 50 - scale(analogRead(VOLUME_INPUT));
+  updatedAnalogRead(analogRead(VOLUME_INPUT));  
+  volume = 50 - scale(lastAnalogRead);
+
+  #ifndef SERIAL_PRINT
+  Serial.print(lastAnalogRead);
+  Serial.print(" -> ");
+  Serial.println(volume);
+  #endif
+
   if (lastVolume < volume) {
     Consumer.press(MEDIA_VOLUME_UP);
     Consumer.release(MEDIA_VOLUME_UP);
@@ -139,7 +155,9 @@ void adjustVolume() {
 }
 
 void setVolumeToZero() {
+  volume = 0;
   lastVolume = 0;
+  lastAnalogRead = 0;
   for (int i = 0; i < 100; i++) {
     Consumer.press(MEDIA_VOLUME_DOWN);
     Consumer.release(MEDIA_VOLUME_DOWN);
@@ -152,13 +170,33 @@ void setVolumeToZero() {
   x E 23-1000
   y E 0-50
 */
-int scale(int value) {
+short scale(int value) {
   if (value < VOLUME_SCALE_DEADZONE_MIN) {
     return VOLUME_SCALE_OUTPUT_MIN;
   } else if (value > VOLUME_SCALE_DEADZONE_MAX) {
     return VOLUME_SCALE_OUTPUT_MAX;
   }
   return (long)VOLUME_SCALE_OUTPUT_MAX * (value-VOLUME_SCALE_DEADZONE_MIN) / (VOLUME_SCALE_DEADZONE_MAX-VOLUME_SCALE_DEADZONE_MIN);
+}
+
+/*
+  If given value is between the last value +- a specified range,
+  then ignore the new value and return false
+  else update value and return true.
+*/
+void updatedAnalogRead(int value) {
+  #ifndef SERIAL_PRINT
+  Serial.print(value);
+  Serial.print(" == ");
+  Serial.println(lastAnalogRead);
+  #endif
+
+  if (value <= lastAnalogRead + VOLUME_ANALOG_READ_DEADZONE && 
+    value >= lastAnalogRead - VOLUME_ANALOG_READ_DEADZONE
+  ) {
+    return;
+  }
+  lastAnalogRead = value;
 }
 
 /*

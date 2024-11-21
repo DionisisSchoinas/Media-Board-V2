@@ -3,6 +3,7 @@
 #include "AdvancedDigitalPin.h"
 #include "AdvancedAnalogPin.h"
 #include "HID-Project.h"
+#include <Smooth.h>
 
 #define SERIAL_PRINT 0
 
@@ -24,7 +25,7 @@ int getMappedJoystickValueWithDelay(int index);
 void adjustVolume();
 void setVolumeToZero();
 short scale(int value);
-void updatedAnalogRead(int value);
+int getAnalogReadAfterDeadZone(int value);
 bool isFirstPress(AdvancedDigitalPin &b);
 bool isHeld(AdvancedDigitalPin &b);
 
@@ -38,12 +39,14 @@ int joystickMappedValues[] = {0, 1, 5, 15};
 int repeatDelay = 250;
 unsigned long lastRepeat = 0;
 
+
+Smooth averageVolume(100);
 short volume;
 short lastVolume;
 int lastAnalogRead;
 
 void setup() {
-  #ifndef SERIAL_PRINT
+  #if SERIAL_PRINT
   Serial.begin(9600);
   #endif
 
@@ -132,14 +135,16 @@ int getMappedJoystickValueWithDelay(int index) {
 }
 
 void adjustVolume() {
-  updatedAnalogRead(analogRead(VOLUME_INPUT));  
-  volume = 50 - scale(lastAnalogRead);
+  averageVolume.add(getAnalogReadAfterDeadZone(analogRead(VOLUME_INPUT)));
 
-  #ifndef SERIAL_PRINT
-  Serial.print(lastAnalogRead);
-  Serial.print(" -> ");
-  Serial.println(volume);
+  lastAnalogRead = averageVolume.get_avg();
+
+  #if SERIAL_PRINT
+  Serial.print(">finalValue:");
+  Serial.println(lastAnalogRead);
   #endif
+
+  volume = 50 - scale(lastAnalogRead);
 
   if (lastVolume < volume) {
     Consumer.press(MEDIA_VOLUME_UP);
@@ -158,6 +163,7 @@ void setVolumeToZero() {
   volume = 0;
   lastVolume = 0;
   lastAnalogRead = 0;
+  averageVolume.set_avg(0);
   for (int i = 0; i < 100; i++) {
     Consumer.press(MEDIA_VOLUME_DOWN);
     Consumer.release(MEDIA_VOLUME_DOWN);
@@ -181,22 +187,21 @@ short scale(int value) {
 
 /*
   If given value is between the last value +- a specified range,
-  then ignore the new value and return false
-  else update value and return true.
+  then ignore the new value and return the old value
+  else return the given value.
 */
-void updatedAnalogRead(int value) {
-  #ifndef SERIAL_PRINT
-  Serial.print(value);
-  Serial.print(" == ");
-  Serial.println(lastAnalogRead);
+int getAnalogReadAfterDeadZone(int value) {
+  #if SERIAL_PRINT
+  Serial.print(">newValue:");
+  Serial.println(value);
   #endif
 
   if (value <= lastAnalogRead + VOLUME_ANALOG_READ_DEADZONE && 
     value >= lastAnalogRead - VOLUME_ANALOG_READ_DEADZONE
   ) {
-    return;
+    return lastAnalogRead;
   }
-  lastAnalogRead = value;
+  return value;
 }
 
 /*

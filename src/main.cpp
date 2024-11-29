@@ -14,8 +14,8 @@
 #define JOYSTICK_SW 15
 
 #define VOLUME_ANALOG_READ_DEADZONE 2
-#define VOLUME_SCALE_DEADZONE_MIN 23
-#define VOLUME_SCALE_DEADZONE_MAX 1000
+#define VOLUME_SCALE_DEADZONE_MIN 75
+#define VOLUME_SCALE_DEADZONE_MAX 950
 #define VOLUME_SCALE_OUTPUT_MIN 0
 #define VOLUME_SCALE_OUTPUT_MAX 50
 
@@ -40,7 +40,7 @@ int repeatDelay = 250;
 unsigned long lastRepeat = 0;
 
 
-Smooth averageVolume(100);
+Smooth averageVolume(200);
 short volume;
 short lastVolume;
 int lastAnalogRead;
@@ -163,7 +163,7 @@ void setVolumeToZero() {
   volume = 0;
   lastVolume = 0;
   lastAnalogRead = 0;
-  averageVolume.set_avg(0);
+  averageVolume.set_avg(VOLUME_SCALE_DEADZONE_MAX);
   for (int i = 0; i < 100; i++) {
     Consumer.press(MEDIA_VOLUME_DOWN);
     Consumer.release(MEDIA_VOLUME_DOWN);

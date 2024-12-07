@@ -1,49 +1,51 @@
 #include <Arduino.h>
 
-#include "AdvancedDigitalPin.h"
 #include "AdvancedAnalogPin.h"
 #include "HID-Project.h"
-#include <Smooth.h>
+#include "OneButton.h"
 
 #define SERIAL_PRINT 0
 
-#define VOLUME_INPUT A3
+#define BUTTON_1_PIN 3
+#define BUTTON_2_PIN 4
+#define BUTTON_3_PIN 5
+#define BUTTON_4_PIN 6
+#define BUTTON_5_PIN 7
+#define BUTTON_6_PIN 8
+#define BUTTON_7_PIN 9
 
 #define JOYSTICK_X A0
 #define JOYSTICK_Y A1
 #define JOYSTICK_SW 15
 
-#define VOLUME_ANALOG_READ_DEADZONE 2
-#define VOLUME_SCALE_DEADZONE_MIN 75
-#define VOLUME_SCALE_DEADZONE_MAX 950
-#define VOLUME_SCALE_OUTPUT_MIN 0
-#define VOLUME_SCALE_OUTPUT_MAX 50
-
 void detectJoystickMovement();
 int getMappedJoystickValue(int pinValue);
 int getMappedJoystickValueWithDelay(int index);
-void adjustVolume();
+void tickButtons();
 void setVolumeToZero();
-short scale(int value);
-int getAnalogReadAfterDeadZone(int value);
-bool isFirstPress(AdvancedDigitalPin &b);
-bool isHeld(AdvancedDigitalPin &b);
+void button3Click();
+void button3LongPress();
+void button4Click();
+void button5Click();
+void button5LongPress();
 
+// Buttons
+OneButton button1(BUTTON_1_PIN);
+OneButton button2(BUTTON_2_PIN);
+OneButton button3(BUTTON_3_PIN);
+OneButton button4(BUTTON_4_PIN);
+OneButton button5(BUTTON_5_PIN);
+OneButton button6(BUTTON_6_PIN);
+OneButton button7(BUTTON_7_PIN);
 
 // Joystick
-AdvancedDigitalPin joystickSW(JOYSTICK_SW, INPUT_PULLUP, 100);
+OneButton joystickSW(JOYSTICK_SW);
 AdvancedAnalogPin joystick_X(JOYSTICK_X, INPUT, 100);
 AdvancedAnalogPin joystick_Y(JOYSTICK_Y, INPUT, 100);
 
 int joystickMappedValues[] = {0, 1, 5, 15};
 int repeatDelay = 250;
 unsigned long lastRepeat = 0;
-
-
-Smooth averageVolume(200);
-short volume;
-short lastVolume;
-int lastAnalogRead;
 
 void setup() {
   #if SERIAL_PRINT
@@ -58,18 +60,24 @@ void setup() {
   pinMode(LED_BUILTIN_TX,INPUT);
   pinMode(LED_BUILTIN_RX,INPUT);
 
-  pinMode(VOLUME_INPUT, INPUT);
+  joystickSW.attachClick(setVolumeToZero);
 
-  setVolumeToZero();
+  button3.setClickMs(200);
+  button3.setPressMs(400);
+  button3.attachClick(button3Click);
+  button3.attachDuringLongPress(button3LongPress);
+  
+  button4.attachClick(button4Click);
+
+  button5.setClickMs(200);
+  button5.setPressMs(400);
+  button5.attachClick(button5Click);
+  button5.attachDuringLongPress(button5LongPress);
 }
 
 void loop() {
-  adjustVolume();
+  tickButtons();
   detectJoystickMovement();
-
-  if (isFirstPress(joystickSW)) {
-    setVolumeToZero();
-  }
 }
 
 void detectJoystickMovement() {
@@ -134,36 +142,18 @@ int getMappedJoystickValueWithDelay(int index) {
   return 0;
 }
 
-void adjustVolume() {
-  averageVolume.add(getAnalogReadAfterDeadZone(analogRead(VOLUME_INPUT)));
-
-  lastAnalogRead = averageVolume.get_avg();
-
-  #if SERIAL_PRINT
-  Serial.print(">finalValue:");
-  Serial.println(lastAnalogRead);
-  #endif
-
-  volume = 50 - scale(lastAnalogRead);
-
-  if (lastVolume < volume) {
-    Consumer.press(MEDIA_VOLUME_UP);
-    Consumer.release(MEDIA_VOLUME_UP);
-    lastVolume++;
-    delay(10);
-  } else if (lastVolume > volume) {
-    Consumer.press(MEDIA_VOLUME_DOWN);
-    Consumer.release(MEDIA_VOLUME_DOWN);
-    lastVolume--;
-    delay(10);
-  }
+void tickButtons() {
+  button1.tick();
+  button2.tick();
+  button3.tick();
+  button4.tick();
+  button5.tick();
+  button6.tick();
+  button7.tick();
+  joystickSW.tick();
 }
 
 void setVolumeToZero() {
-  volume = 0;
-  lastVolume = 0;
-  lastAnalogRead = 0;
-  averageVolume.set_avg(VOLUME_SCALE_DEADZONE_MAX);
   for (int i = 0; i < 100; i++) {
     Consumer.press(MEDIA_VOLUME_DOWN);
     Consumer.release(MEDIA_VOLUME_DOWN);
@@ -171,81 +161,44 @@ void setVolumeToZero() {
   }
 }
 
-/*
-  y = y0 + (y1 - y0) * (x - x0) / (x1 - x0)
-  x E 23-1000
-  y E 0-50
-*/
-short scale(int value) {
-  if (value < VOLUME_SCALE_DEADZONE_MIN) {
-    return VOLUME_SCALE_OUTPUT_MIN;
-  } else if (value > VOLUME_SCALE_DEADZONE_MAX) {
-    return VOLUME_SCALE_OUTPUT_MAX;
-  }
-  return (long)VOLUME_SCALE_OUTPUT_MAX * (value-VOLUME_SCALE_DEADZONE_MIN) / (VOLUME_SCALE_DEADZONE_MAX-VOLUME_SCALE_DEADZONE_MIN);
+void button3Click() {
+    #if SERIAL_PRINT
+      Serial.println("Button 3 pressed");
+    #endif
+    Consumer.press(MEDIA_VOLUME_DOWN);
+    Consumer.release(MEDIA_VOLUME_DOWN);
 }
 
-/*
-  If given value is between the last value +- a specified range,
-  then ignore the new value and return the old value
-  else return the given value.
-*/
-int getAnalogReadAfterDeadZone(int value) {
-  #if SERIAL_PRINT
-  Serial.print(">newValue:");
-  Serial.println(value);
-  #endif
-
-  if (value <= lastAnalogRead + VOLUME_ANALOG_READ_DEADZONE && 
-    value >= lastAnalogRead - VOLUME_ANALOG_READ_DEADZONE
-  ) {
-    return lastAnalogRead;
-  }
-  return value;
+void button3LongPress() {
+    #if SERIAL_PRINT
+      Serial.println("Button 3 Long Press");
+    #endif
+    Consumer.press(MEDIA_VOLUME_DOWN);
+    Consumer.release(MEDIA_VOLUME_DOWN);
+    delay(50);
 }
 
-/*
-  Returns TRUE the first time the PIN reads LOW and then locks the pin until a HIGH is read.
-  Allows PIN to trigger code ONLY ONCE while held.
-  An additional check is made before checking the PIN status. This check is whether or not enough time has passed since the last STATE change
-*/
-bool isFirstPress(AdvancedDigitalPin &b) {
-  if (b.hasStateChangedTooFast())
-    return false;
-    
-  int sensorVal = b.getCurrentPinState();
-  if (b.getState() == sensorVal)
-    return false;
-
-  if (sensorVal == LOW) {
-    b.setState(LOW);
-    return true;
-  } 
-  else if (sensorVal == HIGH && b.getState() == LOW) {
-    b.setState(HIGH);
-  }
-  return false;  
+void button4Click() {
+    #if SERIAL_PRINT
+      Serial.println("Button 4 pressed");
+    #endif
+    Consumer.press(MEDIA_VOLUME_MUTE);
+    Consumer.release(MEDIA_VOLUME_MUTE);
 }
 
-/*
-  Returns TRUE the first time the PIN reads LOW and then locks the pin until a HIGH is read.
-  Allows PIN to trigger code ONLY ONCE while held.
-  An additional check is made before checking the PIN status. This check is whether or not enough time has passed since the last STATE change
-*/
-bool isHeld(AdvancedDigitalPin &b) {
-  if (b.hasStateChangedTooFast())
-    return false;
-    
-  int sensorVal = b.getCurrentPinState();
-  if (b.getState() == sensorVal && sensorVal == LOW)
-    return true;
+void button5Click() {
+    #if SERIAL_PRINT
+      Serial.println("Button 5 pressed");
+    #endif
+    Consumer.press(MEDIA_VOLUME_UP);
+    Consumer.release(MEDIA_VOLUME_UP);
+}
 
-  if (sensorVal == LOW) {
-    b.setState(LOW);
-    return true;
-  } 
-  else if (sensorVal == HIGH && b.getState() == LOW) {
-    b.setState(HIGH);
-  }
-  return false;
+void button5LongPress() {
+    #if SERIAL_PRINT
+      Serial.println("Button 5 Long Press");
+    #endif
+    Consumer.press(MEDIA_VOLUME_UP);
+    Consumer.release(MEDIA_VOLUME_UP);
+    delay(50);
 }
